@@ -1,0 +1,27 @@
+menu "Secure MQTT Client"
+
+config WIFI_SSID
+    string "WiFi SSID"
+    default "myssid"
+    help
+        SSID (network name) for the example to connect to.
+
+config WIFI_PASSWORD
+    string "WiFi Password"
+    default "mypassword"
+    help
+        WiFi password (WPA or WPA2) for the example to use.
+
+config NTP_SERVER_URL
+    string "NTP Time Server URL"
+    default "pool.ntp.org"
+    help
+        URL of the NTP Time Server to connect to.
+
+config MQTT_BROKER_URL
+    string "MQTT Broker URL"
+    default "mqtts://iot.eclipse.org"
+    help
+        URL of the MQTT Broker to connect to.
+
+endmenu

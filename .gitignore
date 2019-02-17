@@ -27,6 +27,20 @@
 *.lib
 
 # Executables
+*.app
+*.bin
+*.elf
 *.exe
 *.out
-*.app
+
+# Secure Credentials
+*.crt
+*.csr
+*.key
+
+# sdkconfig may contain passwords.
+sdkconfig
+sdkconfig.*
+
+# Build directory
+build/
