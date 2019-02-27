@@ -22,6 +22,9 @@
 #include "esp_log.h"
 #include "mqtt_client.h"
 
+#include "app_spi.h"
+
+
 static const char *TAG = "MQTTS_EXAMPLE"; // Log Tag.
 
 static EventGroupHandle_t wifi_event_group;
@@ -62,6 +65,10 @@ static void wifi_init(void)
             .password = CONFIG_WIFI_PASSWORD,
         },
     };
+    //wifi_config_t wifi_config;
+    //strcpy((char*)wifi_config.sta.ssid, CONFIG_WIFI_SSID);
+    //strcpy((char*)wifi_config.sta.password, CONFIG_WIFI_PASSWORD);
+
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config));
     ESP_LOGI(TAG, "start the WIFI SSID:[%s]", CONFIG_WIFI_SSID);
@@ -73,7 +80,7 @@ static void wifi_init(void)
 
 static void sntp_set_time()
 {
-    ESP_LOGI(TAG, "Initializing SNTP - server %s", CONFIG_NTP_SERVER_URL);
+    ESP_LOGI(TAG, "Initializing SNTP - server '%s'", CONFIG_NTP_SERVER_URL);
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, CONFIG_NTP_SERVER_URL);
     //sntp_setservername(0, "maggie");
