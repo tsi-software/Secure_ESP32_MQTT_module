@@ -29,7 +29,10 @@
 static const int PIN_NUM_MISO = 19;
 static const int PIN_NUM_MOSI = 23;
 static const int PIN_NUM_CLK  = 18;
-static const int PIN_NUM_CS   =  5; // ** STRAPPING **
+static const int PIN_NUM_CS   = 32; // ** GPIO5 is STRAPPING **
+static const int PIN_NUM_ClientTxReq = 33; // INPUT - When HIGH the Client is requesting to send to the Master.
+
+static AppSPI static_app_spi;
 
 
 AppSPI::AppSPI()
@@ -67,10 +70,16 @@ void AppSPI::connect() {
     esp_err_t ret;
 
     //Initialize the SPI bus.
-    ret = spi_bus_initialize(HSPI_HOST, &buscfg, 1);
+    ret = spi_bus_initialize(VSPI_HOST, &buscfg, 1);
     ESP_ERROR_CHECK(ret);
 
     //Attach to the SPI bus.
-    ret = spi_bus_add_device(HSPI_HOST, &devcfg, &spi);
+    ret = spi_bus_add_device(VSPI_HOST, &devcfg, &spi);
     ESP_ERROR_CHECK(ret);
+}
+
+
+// c wrapper.
+void app_spi_init(void) {
+    static_app_spi.connect();
 }
