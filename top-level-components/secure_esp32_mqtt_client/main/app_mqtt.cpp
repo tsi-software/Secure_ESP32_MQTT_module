@@ -157,7 +157,8 @@ void *get_static_app_mqtt(void) {
 
 
 esp_err_t app_mqtt_event_handler(esp_mqtt_event_handle_t event) {
-    AppMQTT *appMQTT = (AppMQTT *)event->user_context;
+    AppMQTT *appMQTT = static_cast<AppMQTT *>(event->user_context);
+    //AppMQTT *appMQTT = (AppMQTT *)event->user_context;
 
     if (!appMQTT) {
         ESP_LOGE(LOG_TAG, "app_mqtt_event_handler(...): event->user_context is NULL!");

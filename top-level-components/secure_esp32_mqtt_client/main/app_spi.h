@@ -22,6 +22,7 @@ public:
     virtual ~AppSPI() { }
 
     void connect();
+    void task();
 
 private:
     spi_device_handle_t           spi;
@@ -39,7 +40,7 @@ extern "C"
 #endif
 
 // c wrapper.
-extern void app_spi_init(void);
+extern esp_err_t app_spi_init(void);
 
 
 #ifdef __cplusplus
