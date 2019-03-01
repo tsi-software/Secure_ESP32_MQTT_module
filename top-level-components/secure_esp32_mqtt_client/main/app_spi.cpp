@@ -1,4 +1,4 @@
-/*  app_spi.c
+/*  app_spi.cpp
     Created: 2019-02-25
     Author: Warren Taylor
 
@@ -21,7 +21,11 @@
 #include "soc/gpio_struct.h"
 #include "driver/gpio.h"
 
+#include "app_queues.h"
 #include "app_spi.h"
+
+
+//static const char *LOG_TAG = "APP_SPI";
 
 
 // https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/peripherals/spi_master.html

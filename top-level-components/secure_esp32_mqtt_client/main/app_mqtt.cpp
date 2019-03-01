@@ -1,4 +1,4 @@
-/*  app_mqtt.c
+/*  app_mqtt.cpp
     Created: 2019-02-27
     Author: Warren Taylor
 
@@ -9,26 +9,24 @@
     CONDITIONS OF ANY KIND, either express or implied.
 */
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+//#include "freertos/task.h"
 #include "esp_log.h"
+
 #include "app_mqtt.h"
+#include "app_queues.h"
+
 
 static const char *LOG_TAG = "APP_MQTT";
-
 static AppMQTT static_app_mqtt;
-
-
-AppMQTT::AppMQTT()
-{
-}
 
 
 //-------------------------------------
 // MQTT Events.
 //-------------------------------------
 esp_err_t AppMQTT::eventHandler(esp_mqtt_event_handle_t event) {
-    //esp_mqtt_client_handle_t client = event->client;
     esp_err_t err_code = ESP_OK;
-    //int msg_id;
 
     switch (event->event_id) {
         case MQTT_EVENT_CONNECTED:
@@ -74,50 +72,74 @@ esp_err_t AppMQTT::eventHandler(esp_mqtt_event_handle_t event) {
 
 esp_err_t AppMQTT::connected(esp_mqtt_event_handle_t event) {
     esp_err_t err_code = ESP_OK;
-
-
     return err_code;
 }
 
 
 esp_err_t AppMQTT::disconnected(esp_mqtt_event_handle_t event) {
     esp_err_t err_code = ESP_OK;
-
-
     return err_code;
 }
 
 
 esp_err_t AppMQTT::subscribed(esp_mqtt_event_handle_t event) {
     esp_err_t err_code = ESP_OK;
-
-
     return err_code;
 }
 
 
 esp_err_t AppMQTT::unsubscribed(esp_mqtt_event_handle_t event) {
     esp_err_t err_code = ESP_OK;
-
-
     return err_code;
 }
 
 
 esp_err_t AppMQTT::published(esp_mqtt_event_handle_t event) {
     esp_err_t err_code = ESP_OK;
-
-
     return err_code;
 }
 
 
 esp_err_t AppMQTT::dataReceived(esp_mqtt_event_handle_t event) {
     esp_err_t err_code = ESP_OK;
+    AppMQTTQueueNode *node = new AppMQTTQueueNode(event->topic, event->data);
 
+    //TODO: perhaps move the following block of code to "app_queues.cpp".
+    //portMAX_DELAY
+    // 10 milllisecond delay.
+    const TickType_t delay = 10 / portTICK_PERIOD_MS;
+    BaseType_t result = xQueueSendToBack(mqttReceivedQueue, node, delay);
+    if (result == pdFALSE) {
+        // The queue was full and timed out.
+        delete node;
+        node = nullptr;
+        ESP_LOGE(
+            LOG_TAG,
+            "AppMQTT::dataReceived(...): mqttReceivedQueue was full!\ntopic:%s\ndata:%s\n",
+            event->topic,
+            event->data
+        );
+        return ESP_ERR_TIMEOUT;
+    }
 
     return err_code;
 }
+
+#ifdef IGNORE_THIS //never defined!
+typedef struct {
+    esp_mqtt_event_id_t event_id;       /*!< MQTT event type */
+    esp_mqtt_client_handle_t client;    /*!< MQTT client handle for this event */
+    void *user_context;                 /*!< User context passed from MQTT client config */
+    char *data;                         /*!< Data asociated with this event */
+    int data_len;                       /*!< Lenght of the data for this event */
+    int total_data_len;                 /*!< Total length of the data (longer data are supplied with multiple events) */
+    int current_data_offset;            /*!< Actual offset for the data asociated with this event */
+    char *topic;                        /*!< Topic asociated with this event */
+    int topic_len;                      /*!< Length of the topic for this event asociated with this event */
+    int msg_id;                         /*!< MQTT messaged id of message */
+    int session_present;                /*!< MQTT session_present flag for connection event */
+} esp_mqtt_event_t;
+#endif //IGNORE_THIS
 
 
 esp_err_t AppMQTT::errorOccurred(esp_mqtt_event_handle_t event) {

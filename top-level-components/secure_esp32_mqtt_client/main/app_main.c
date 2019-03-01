@@ -23,6 +23,7 @@
 #include "mqtt_client.h"
 
 #include "app_mqtt.h"
+#include "app_queues.h"
 #include "app_spi.h"
 
 
@@ -117,7 +118,7 @@ extern const uint8_t client_key_pem_start[] asm("_binary_client_key_start");
 extern const uint8_t client_key_pem_end[] asm("_binary_client_key_end");
 
 
-static void mqtt_app_start(void) {
+static void app_mqtt_start(void) {
     const esp_mqtt_client_config_t mqtt_cfg = {
         .event_handle = app_mqtt_event_handler,
         .uri = CONFIG_MQTT_BROKER_URL,
@@ -148,6 +149,8 @@ void app_main() {
     nvs_flash_init();
     wifi_init();
     sntp_set_time();
-    mqtt_app_start();
+
+    app_queues_init();
+    app_mqtt_start();
     app_spi_init();
 }

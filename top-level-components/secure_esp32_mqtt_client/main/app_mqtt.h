@@ -18,10 +18,11 @@
 #ifdef __cplusplus
 #include "mqtt_client.h"
 
+
 class AppMQTT {
 public:
-    AppMQTT();
-    virtual ~AppMQTT() { }
+    //AppMQTT() { }
+    //virtual ~AppMQTT() { }
 
     esp_err_t eventHandler(esp_mqtt_event_handle_t event);
 
@@ -33,8 +34,6 @@ protected:
     virtual esp_err_t published(esp_mqtt_event_handle_t event);
     virtual esp_err_t dataReceived(esp_mqtt_event_handle_t event);
     virtual esp_err_t errorOccurred(esp_mqtt_event_handle_t event);
-
-private:
 };
 
 #endif //__cplusplus
