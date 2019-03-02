@@ -9,13 +9,9 @@
     CONDITIONS OF ANY KIND, either express or implied.
 */
 
-/*
-#include <stdio.h>
-#include <stdlib.h>
+//#include <stdio.h>
+//#include <stdlib.h>
 #include <string.h>
-*/
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "esp_system.h"
 #include "esp_log.h"
 #include "driver/spi_master.h"
@@ -82,14 +78,144 @@ void AppSPI::connect() {
     ESP_ERROR_CHECK(ret);
 
     //Attach to the SPI bus.
-    ret = spi_bus_add_device(VSPI_HOST, &devcfg, &spi);
+    ret = spi_bus_add_device(VSPI_HOST, &devcfg, &spiHandle);
     ESP_ERROR_CHECK(ret);
 }
 
 
 void AppSPI::task() {
-    //
+    spiTransactionsPendingCount = 0;
+
+    while(1) {
+        // Process data that was received from MQTT subscriptions.
+        AppMQTTQueueNode *node = nullptr;
+        TickType_t queueReceiveDelay = 1;
+
+        if (spiTransactionsPendingCount == 0) {
+            // All SPI Transactions have completed and resources released.
+            // So wait for any new incoming MQTT messages to process.
+            queueReceiveDelay = portMAX_DELAY;
+        }
+
+        BaseType_t result = xQueueReceive(
+            mqttReceivedQueue,
+            (void *)node,
+            queueReceiveDelay
+        );
+
+        if (node && result == pdTRUE) {
+            processMqttNode(*node);
+        }
+        delete node;
+        node = nullptr;
+
+        processCompletedSpiTransactions();
+    }
+
+    // This should never be reached, but just incase...
+    if(taskHandle) {
+        vTaskDelete(taskHandle);
+        taskHandle = nullptr;
+    }
 }
+
+
+void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
+    ESP_LOGV(LOG_TAG, "AppSPI::processMqttNode()\ntopic:%s\ndata:%s",
+             node.getTopic().c_str(), node.getData().c_str()
+    );
+
+    spi_transaction_t *spiTrans = static_cast<spi_transaction_t *>( malloc(sizeof(spi_transaction_t)) );
+    configASSERT(spiTrans);
+    memset( static_cast<void *>(spiTrans), 0, sizeof(spi_transaction_t) );
+    spiTrans->length = 0;
+    spiTrans->rxlength = 0;
+    spiTrans->user = nullptr;
+    spiTrans->tx_buffer = nullptr;
+    spiTrans->rx_buffer = nullptr;
+
+    //todo
+
+    //esp_err_t spi_device_queue_trans(spi_device_handle_t handle, spi_transaction_t *trans_desc, TickType_t ticks_to_wait)
+    esp_err_t err_code = spi_device_queue_trans(spiHandle, spiTrans, 1);
+    // ESP_ERR_INVALID_ARG if parameter is invalid
+    // ESP_ERR_TIMEOUT if there was no room in the queue before ticks_to_wait expired
+    // ESP_ERR_NO_MEM if allocating DMA-capable temporary buffer failed
+    // ESP_ERR_INVALID_STATE if previous transactions are not finished
+    // ESP_OK on success
+    if (err_code == ESP_OK) {
+        // spiTrans will be released in 'processCompletedSpiTransactions()'.
+        ++spiTransactionsPendingCount;
+    } else {
+        free(spiTrans);
+    }
+}
+
+
+void AppSPI::processCompletedSpiTransactions() {
+    spi_transaction_t *spiTrans = nullptr;
+
+    //esp_err_t spi_device_get_trans_result(spi_device_handle_thandle, spi_transaction_t **trans_desc, TickType_t ticks_to_wait)
+    esp_err_t err_code = spi_device_get_trans_result(spiHandle, &spiTrans, 0);
+    // ESP_ERR_INVALID_ARG if parameter is invalid
+    // ESP_ERR_TIMEOUT if there was no completed transaction before ticks_to_wait expired
+    // ESP_OK on success
+    if (err_code == ESP_OK && spiTrans) {
+        if (spiTrans->tx_buffer && !(spiTrans->flags & SPI_TRANS_USE_TXDATA)) {
+            heap_caps_free( (void *)spiTrans->tx_buffer );
+        }
+        if (spiTrans->rx_buffer && !(spiTrans->flags & SPI_TRANS_USE_RXDATA)) {
+            heap_caps_free(spiTrans->rx_buffer);
+        }
+        free(spiTrans);
+        --spiTransactionsPendingCount;
+    }
+}
+
+
+//******************************************************************************
+#ifdef IGNORE_THIS //never defined!
+/**
+ * This structure describes one SPI transaction. The descriptor should not be modified until the transaction finishes.
+ */
+struct spi_transaction_t {
+    uint32_t flags;                 ///< Bitwise OR of SPI_TRANS_* flags
+    uint16_t cmd;                   /**< Command data, of which the length is set in the ``command_bits`` of spi_device_interface_config_t.
+                                      *
+                                      *  <b>NOTE: this field, used to be "command" in ESP-IDF 2.1 and before, is re-written to be used in a new way in ESP-IDF 3.0.</b>
+                                      *
+                                      *  Example: write 0x0123 and command_bits=12 to send command 0x12, 0x3_ (in previous version, you may have to write 0x3_12).
+                                      */
+    uint64_t addr;                  /**< Address data, of which the length is set in the ``address_bits`` of spi_device_interface_config_t.
+                                      *
+                                      *  <b>NOTE: this field, used to be "address" in ESP-IDF 2.1 and before, is re-written to be used in a new way in ESP-IDF3.0.</b>
+                                      *
+                                      *  Example: write 0x123400 and address_bits=24 to send address of 0x12, 0x34, 0x00 (in previous version, you may have to write 0x12340000).
+                                      */
+    size_t length;                  ///< Total data length, in bits
+    size_t rxlength;                ///< Total data length received, should be not greater than ``length`` in full-duplex mode (0 defaults this to the value of ``length``).
+    void *user;                     ///< User-defined variable. Can be used to store eg transaction ID.
+    union {
+        const void *tx_buffer;      ///< Pointer to transmit buffer, or NULL for no MOSI phase
+        uint8_t tx_data[4];         ///< If SPI_USE_TXDATA is set, data set here is sent directly from this variable.
+    };
+    union {
+        void *rx_buffer;            ///< Pointer to receive buffer, or NULL for no MISO phase. Written by 4 bytes-unit if DMA is used.
+        uint8_t rx_data[4];         ///< If SPI_USE_RXDATA is set, data is received directly to this variable
+    };
+} ;        //the rx data should start from a 32-bit aligned address to get around dma issue.
+
+#define SPI_TRANS_MODE_DIO            (1<<0)  ///< Transmit/receive data in 2-bit mode
+#define SPI_TRANS_MODE_QIO            (1<<1)  ///< Transmit/receive data in 4-bit mode
+#define SPI_TRANS_USE_RXDATA          (1<<2)  ///< Receive into rx_data member of spi_transaction_t instead into memory at rx_buffer.
+#define SPI_TRANS_USE_TXDATA          (1<<3)  ///< Transmit tx_data member of spi_transaction_t instead of data at tx_buffer. Do not set tx_buffer when using this.
+#define SPI_TRANS_MODE_DIOQIO_ADDR    (1<<4)  ///< Also transmit address in mode selected by SPI_MODE_DIO/SPI_MODE_QIO
+#define SPI_TRANS_VARIABLE_CMD        (1<<5)  ///< Use the ``command_bits`` in ``spi_transaction_ext_t`` rather than default value in ``spi_device_interface_config_t``.
+#define SPI_TRANS_VARIABLE_ADDR       (1<<6)  ///< Use the ``address_bits`` in ``spi_transaction_ext_t`` rather than default value in ``spi_device_interface_config_t``.
+
+#endif // IGNORE_THIS
+//******************************************************************************
+
 
 
 //-------------------------------------
@@ -133,7 +259,9 @@ esp_err_t app_spi_init(void) {
         APP_CPU_NUM      //xCoreID
     );
 
-    if(result != pdPASS) {
+    if(result == pdPASS) {
+        static_app_spi.setTaskHandle(taskHandle);
+    } else {
         err_code = ESP_ERR_NO_MEM;
         ESP_LOGE(LOG_TAG, "app_spi_init(): xTaskCreatePinnedToCore(...) failed!");
         ESP_ERROR_CHECK(err_code);

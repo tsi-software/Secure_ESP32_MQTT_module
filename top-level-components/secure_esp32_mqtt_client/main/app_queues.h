@@ -26,6 +26,9 @@ public:
         : topic{topic}, data{data}
     { }
 
+    const std::string & getTopic() const { return topic; }
+    const std::string & getData()  const { return data; }
+
 private:
     std::string topic, data;
 };

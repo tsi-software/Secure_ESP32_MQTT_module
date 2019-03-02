@@ -14,6 +14,8 @@
 
 //-------------------
 #ifdef __cplusplus
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "driver/spi_master.h"
 
 class AppSPI {
@@ -24,10 +26,19 @@ public:
     void connect();
     void task();
 
+    void setTaskHandle(TaskHandle_t taskHandle) {
+        this->taskHandle = taskHandle;
+    }
+
 private:
-    spi_device_handle_t           spi;
+    spi_device_handle_t           spiHandle;
     spi_bus_config_t              buscfg;
     spi_device_interface_config_t devcfg;
+    TaskHandle_t taskHandle = nullptr;
+    unsigned spiTransactionsPendingCount = 0;
+
+    void processMqttNode(AppMQTTQueueNode &node);
+    void processCompletedSpiTransactions();
 };
 
 #endif //__cplusplus
