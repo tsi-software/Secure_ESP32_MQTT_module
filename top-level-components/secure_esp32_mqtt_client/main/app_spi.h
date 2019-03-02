@@ -50,7 +50,7 @@ extern "C"
 {
 #endif
 
-// c wrapper.
+// C wrapper.
 extern esp_err_t app_spi_init(void);
 
 

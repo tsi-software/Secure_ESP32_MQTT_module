@@ -39,6 +39,12 @@ static const UBaseType_t APP_SPI_DEFAULT_TASK_PRIORITY = 5;
 static AppSPI static_app_spi;
 
 
+//-------------------------------------
+// Local Declarations.
+//-------------------------------------
+static void releaseSpiTrans(spi_transaction_t *spiTrans);
+
+
 AppSPI::AppSPI()
     : buscfg {
         PIN_NUM_MISO, //miso_io_num
@@ -92,7 +98,7 @@ void AppSPI::task() {
         TickType_t queueReceiveDelay = 1;
 
         if (spiTransactionsPendingCount == 0) {
-            // All SPI Transactions have completed and resources released.
+            // All SPI Transactions have completed and their resources released.
             // So wait for any new incoming MQTT messages to process.
             queueReceiveDelay = portMAX_DELAY;
         }
@@ -128,11 +134,11 @@ void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
     // Add 2 for the comma and null terminator.
     size_t messageLength = node.getTopic().size() + node.getData().size() + 2;
     // Make sure messageLength is divisable by 4 (4 bytes = 32 bits) to ensure DMA efficiency.
-    size_t tmpLength = messageLength & ~3; // chop off the last 2 bits.
+    size_t tmpLength = messageLength & ~3; // chop off the last 2 bits (i.e. divisible by 4).
     if (messageLength == tmpLength) {
         messageLength = tmpLength;
     } else {
-        messageLength = tmpLength + 4;
+        messageLength = tmpLength + 4; // round up to the next "divisible by 4".
     }
 
     spi_transaction_t *spiTrans = static_cast<spi_transaction_t *>( malloc(sizeof(spi_transaction_t)) );
@@ -141,6 +147,8 @@ void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
     spiTrans->length = messageLength * 8; // in bits!
     //spiTrans->rxlength = 0; // (0 defaults this to the value of 'length').
     //spiTrans->user = nullptr;
+
+    //TODO: the following would be more easily implemented with a std::stringstream.
 
     char *ptr1;
     size_t offset;
@@ -173,19 +181,25 @@ void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
         // spiTrans will be released in 'processCompletedSpiTransactions()'.
         ++spiTransactionsPendingCount;
     } else {
-        free(spiTrans);
+        // The message could not be sent so release the resources now.
+        releaseSpiTrans(spiTrans);
     }
 }
 
 
 void AppSPI::processCompletedSpiTransactions() {
     spi_transaction_t *spiTrans = nullptr;
-
-    esp_err_t err_code = spi_device_get_trans_result(spiHandle, &spiTrans, 0);
+    esp_err_t err_code = spi_device_get_trans_result(spiHandle, &spiTrans, 1);
     //esp_err_t spi_device_get_trans_result(spi_device_handle_thandle, spi_transaction_t **trans_desc, TickType_t ticks_to_wait)
     // ESP_ERR_INVALID_ARG if parameter is invalid
     // ESP_ERR_TIMEOUT if there was no completed transaction before ticks_to_wait expired
     // ESP_OK on success
+    if (err_code == ESP_OK && spiTrans) {
+        releaseSpiTrans(spiTrans);
+        --spiTransactionsPendingCount;
+    }
+
+    /***
     if (err_code == ESP_OK && spiTrans) {
         if (spiTrans->tx_buffer && !(spiTrans->flags & SPI_TRANS_USE_TXDATA)) {
             heap_caps_free( (void *)spiTrans->tx_buffer );
@@ -195,6 +209,26 @@ void AppSPI::processCompletedSpiTransactions() {
         }
         free(spiTrans);
         --spiTransactionsPendingCount;
+    }
+    ***/
+}
+
+
+//-------------------------------------
+// Local Functions.
+//-------------------------------------
+
+static void releaseSpiTrans(spi_transaction_t *spiTrans) {
+    if (spiTrans) {
+        if (spiTrans->tx_buffer && !(spiTrans->flags & SPI_TRANS_USE_TXDATA)) {
+            heap_caps_free( (void *)spiTrans->tx_buffer );
+            spiTrans->tx_buffer = nullptr;
+        }
+        if (spiTrans->rx_buffer && !(spiTrans->flags & SPI_TRANS_USE_RXDATA)) {
+            heap_caps_free(spiTrans->rx_buffer);
+            spiTrans->rx_buffer = nullptr;
+        }
+        free(spiTrans);
     }
 }
 
@@ -245,7 +279,7 @@ struct spi_transaction_t {
 
 
 //-------------------------------------
-// c wrappers.
+// C wrappers.
 //-------------------------------------
 
 static void app_spi_task_callback( void * parameters ) {
