@@ -125,19 +125,45 @@ void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
              node.getTopic().c_str(), node.getData().c_str()
     );
 
+    // Add 2 for the comma and null terminator.
+    size_t messageLength = node.getTopic().size() + node.getData().size() + 2;
+    // Make sure messageLength is divisable by 4 (4 bytes = 32 bits) to ensure DMA efficiency.
+    size_t tmpLength = messageLength & ~3; // chop off the last 2 bits.
+    if (messageLength == tmpLength) {
+        messageLength = tmpLength;
+    } else {
+        messageLength = tmpLength + 4;
+    }
+
     spi_transaction_t *spiTrans = static_cast<spi_transaction_t *>( malloc(sizeof(spi_transaction_t)) );
     configASSERT(spiTrans);
     memset( static_cast<void *>(spiTrans), 0, sizeof(spi_transaction_t) );
-    spiTrans->length = 0;
-    spiTrans->rxlength = 0;
-    spiTrans->user = nullptr;
-    spiTrans->tx_buffer = nullptr;
-    spiTrans->rx_buffer = nullptr;
+    spiTrans->length = messageLength * 8; // in bits!
+    //spiTrans->rxlength = 0; // (0 defaults this to the value of 'length').
+    //spiTrans->user = nullptr;
 
-    //todo
+    char *ptr1;
+    size_t offset;
 
-    //esp_err_t spi_device_queue_trans(spi_device_handle_t handle, spi_transaction_t *trans_desc, TickType_t ticks_to_wait)
+    offset = 0;
+    ptr1 = static_cast<char *>(heap_caps_malloc(messageLength, MALLOC_CAP_DMA));
+    configASSERT(ptr1);
+    memset( ptr1, 0, messageLength );
+    memcpy( ptr1 + offset, node.getTopic().c_str(), node.getTopic().size() );
+    offset += node.getTopic().size();
+    ptr1[offset] = ',';
+    offset++;
+    memcpy( ptr1 + offset, node.getData().c_str(), node.getData().size() );
+    spiTrans->tx_buffer = ptr1;
+
+    offset = 0;
+    ptr1 = static_cast<char *>(heap_caps_malloc(messageLength, MALLOC_CAP_DMA));
+    configASSERT(ptr1);
+    memset(ptr1, 0, messageLength);
+    spiTrans->rx_buffer = ptr1;
+
     esp_err_t err_code = spi_device_queue_trans(spiHandle, spiTrans, 1);
+    //esp_err_t spi_device_queue_trans(spi_device_handle_t handle, spi_transaction_t *trans_desc, TickType_t ticks_to_wait)
     // ESP_ERR_INVALID_ARG if parameter is invalid
     // ESP_ERR_TIMEOUT if there was no room in the queue before ticks_to_wait expired
     // ESP_ERR_NO_MEM if allocating DMA-capable temporary buffer failed
@@ -155,8 +181,8 @@ void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
 void AppSPI::processCompletedSpiTransactions() {
     spi_transaction_t *spiTrans = nullptr;
 
-    //esp_err_t spi_device_get_trans_result(spi_device_handle_thandle, spi_transaction_t **trans_desc, TickType_t ticks_to_wait)
     esp_err_t err_code = spi_device_get_trans_result(spiHandle, &spiTrans, 0);
+    //esp_err_t spi_device_get_trans_result(spi_device_handle_thandle, spi_transaction_t **trans_desc, TickType_t ticks_to_wait)
     // ESP_ERR_INVALID_ARG if parameter is invalid
     // ESP_ERR_TIMEOUT if there was no completed transaction before ticks_to_wait expired
     // ESP_OK on success
