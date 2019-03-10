@@ -53,7 +53,8 @@ AppSPI::AppSPI()
         -1,  //quadwp_io_num
         -1,  //quadhd_io_num
         0,   //max_transfer_sz, Defaults to 4094 if 0.
-        SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_SCLK | SPICOMMON_BUSFLAG_MISO | SPICOMMON_BUSFLAG_MOSI, //flags
+        //SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_SCLK | SPICOMMON_BUSFLAG_MISO | SPICOMMON_BUSFLAG_MOSI, //flags
+        SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_NATIVE_PINS, //flags
         0    //intr_flags - Interrupt flag for the bus to set the priority, and IRAM attribute
     }
     , devcfg {
@@ -64,7 +65,7 @@ AppSPI::AppSPI()
         128, //duty_cycle_pos - (128 = 50%/50% duty)
         0, //cs_ena_pretrans
         0, //cs_ena_posttrans
-        APB_CLK_FREQ/80, // 1*1000*1000, //clock_speed_hz - Clock out at 1 MHz. //TODO: try 4mhz and 8mhz
+        APB_CLK_FREQ/80, // 1*1000*1000, //clock_speed_hz - Clock out at 1 MHz. (any faster causes Arduino to fail)
         0, //input_delay_ns - Leave at 0 unless you know you need a delay.
         PIN_NUM_CS, //spics_io_num - CS pin.
         0, //flags - Bitwise OR of SPI_DEVICE_* flags
@@ -146,6 +147,19 @@ void AppSPI::connect() {
     ret = spi_bus_add_device(VSPI_HOST, &devcfg, &spiHandle);
     //esp_err_t spi_bus_add_device(spi_host_device_t host, const spi_device_interface_config_t *dev_config, spi_device_handle_t *handle);
     ESP_ERROR_CHECK(ret);
+}
+
+
+void AppSPI::taskStart() {
+    taskFirstTime();
+    task();
+}
+
+
+void AppSPI::taskFirstTime() {
+    // FOR TESTING PURPOSES ONLY.
+    AppMQTTQueueNode testNode{ "ping", 4, "test", 4 };
+    processMqttNode(testNode);
 }
 
 
@@ -239,7 +253,6 @@ void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
     memset(ptr1, 0, messageLength);
     spiTrans->rx_buffer = ptr1;
 
-
     esp_err_t err_code = spi_device_queue_trans(spiHandle, spiTrans, 1);
     //esp_err_t spi_device_queue_trans(spi_device_handle_t handle, spi_transaction_t *trans_desc, TickType_t ticks_to_wait)
     // ESP_ERR_INVALID_ARG if parameter is invalid
@@ -253,7 +266,7 @@ void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
         ESP_LOGI(LOG_TAG, "AppSPI::processMqttNode(...) - spi_device_queue_trans(...) success.");
         ESP_LOGI(LOG_TAG, "tx-length:%d, msg:%s", spiTrans->length/8, (char *)spiTrans->tx_buffer);
     } else {
-        // The message could not be sent so release the resources now.
+        // The message could not be sent via SPI so release the resources now.
         releaseSpiTrans(spiTrans);
         ESP_LOGE(LOG_TAG, "AppSPI::processMqttNode(...) - spi_device_queue_trans(...) ERROR %d.", err_code);
     }
@@ -346,7 +359,7 @@ struct spi_transaction_t {
 
 static void app_spi_task_callback( void * parameters ) {
     AppSPI *appSPI = static_cast<AppSPI *>(parameters);
-    appSPI->task();
+    appSPI->taskStart();
 }
 
 

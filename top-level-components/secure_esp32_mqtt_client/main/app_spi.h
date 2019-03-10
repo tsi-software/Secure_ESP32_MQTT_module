@@ -24,7 +24,7 @@ public:
     virtual ~AppSPI() { }
 
     void connect();
-    void task();
+    void taskStart();
 
     void setTaskHandle(TaskHandle_t taskHandle) {
         this->taskHandle = taskHandle;
@@ -37,6 +37,8 @@ private:
     TaskHandle_t taskHandle = nullptr;
     unsigned spiTransactionsPendingCount = 0;
 
+    void task();
+    void taskFirstTime();
     void processMqttNode(AppMQTTQueueNode &node);
     void processCompletedSpiTransactions();
 };
