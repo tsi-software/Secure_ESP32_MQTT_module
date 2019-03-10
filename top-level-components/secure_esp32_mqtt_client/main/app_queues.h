@@ -22,8 +22,8 @@
 
 class AppMQTTQueueNode {
 public:
-    AppMQTTQueueNode(const char *topic, const char *data)
-        : topic{topic}, data{data}
+    AppMQTTQueueNode(const char *topic, size_t topicSize, const char *data, size_t dataSize)
+        : topic{topic, topicSize}, data{data, dataSize}
     { }
 
     const std::string & getTopic() const { return topic; }

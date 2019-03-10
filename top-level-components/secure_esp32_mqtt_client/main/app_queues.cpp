@@ -11,8 +11,11 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "esp_log.h"
 
 #include "app_queues.h"
+
+static const char *LOG_TAG = "APP_QUEUES";
 
 
 //-------------------------------------
@@ -57,6 +60,7 @@ void app_queues_init(void) {
     );
 #endif
     configASSERT(mqttReceivedQueue);
+    ESP_LOGI(LOG_TAG, "mqttReceivedQueue initialized.");
 
 #if (configSUPPORT_STATIC_ALLOCATION == 1)
     spiReceivedQueue = xQueueCreateStatic(
@@ -72,4 +76,5 @@ void app_queues_init(void) {
     );
 #endif
     configASSERT(spiReceivedQueue);
+    ESP_LOGI(LOG_TAG, "spiReceivedQueue initialized.");
 }

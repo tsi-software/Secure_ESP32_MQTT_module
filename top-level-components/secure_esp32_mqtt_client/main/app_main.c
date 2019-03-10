@@ -25,6 +25,7 @@
 #include "app_mqtt.h"
 #include "app_queues.h"
 #include "app_spi.h"
+#include "uart_echo.h"
 
 
 static const char *LOG_TAG = "SECURE_ESP32_MQTT";
@@ -152,5 +153,6 @@ void app_main() {
 
     app_queues_init();
     app_mqtt_start();
+    uart_echo_init();
     app_spi_init();
 }

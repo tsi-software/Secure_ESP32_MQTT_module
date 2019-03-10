@@ -64,7 +64,7 @@ AppSPI::AppSPI()
         128, //duty_cycle_pos - (128 = 50%/50% duty)
         0, //cs_ena_pretrans
         0, //cs_ena_posttrans
-        8*1000*1000, //clock_speed_hz - Clock out at 8 MHz.
+        1*1000*1000, //clock_speed_hz - Clock out at 1 MHz. //TODO: try 4mhz and 8mhz
         0, //input_delay_ns - Leave at 0 unless you know you need a delay.
         PIN_NUM_CS, //spics_io_num - CS pin.
         0, //flags - Bitwise OR of SPI_DEVICE_* flags
@@ -93,6 +93,8 @@ void AppSPI::task() {
     spiTransactionsPendingCount = 0;
 
     while(1) {
+        ESP_LOGI(LOG_TAG, "AppSPI::task() - loop.");
+
         // Process data that was received from MQTT subscriptions.
         AppMQTTQueueNode *node = nullptr;
         TickType_t queueReceiveDelay = 1;
@@ -105,8 +107,11 @@ void AppSPI::task() {
 
         BaseType_t result = xQueueReceive(
             mqttReceivedQueue,
-            (void *)node,
+            (void *)&node,
             queueReceiveDelay
+        );
+        ESP_LOGV(LOG_TAG, "AppSPI::task() - xQueueReceive(...) node is %s, result=%d",
+            node ? "NOT NULL" : "NULL", result
         );
 
         if (node && result == pdTRUE) {
@@ -127,7 +132,7 @@ void AppSPI::task() {
 
 
 void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
-    ESP_LOGV(LOG_TAG, "AppSPI::processMqttNode()\ntopic:%s\ndata:%s",
+    ESP_LOGI(LOG_TAG, "AppSPI::processMqttNode()\ntopic:%s\ndata:%s",
              node.getTopic().c_str(), node.getData().c_str()
     );
 
@@ -180,9 +185,12 @@ void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
     if (err_code == ESP_OK) {
         // spiTrans will be released in 'processCompletedSpiTransactions()'.
         ++spiTransactionsPendingCount;
+        ESP_LOGI(LOG_TAG, "AppSPI::processMqttNode(...) - spi_device_queue_trans(...) success.");
+        ESP_LOGI(LOG_TAG, "tx-length:%d, msg:%s", spiTrans->length/8, (char *)spiTrans->tx_buffer);
     } else {
         // The message could not be sent so release the resources now.
         releaseSpiTrans(spiTrans);
+        ESP_LOGE(LOG_TAG, "AppSPI::processMqttNode(...) - spi_device_queue_trans(...) ERROR %d.", err_code);
     }
 }
 
@@ -235,9 +243,7 @@ static void releaseSpiTrans(spi_transaction_t *spiTrans) {
 
 //******************************************************************************
 #ifdef IGNORE_THIS //never defined!
-/**
- * This structure describes one SPI transaction. The descriptor should not be modified until the transaction finishes.
- */
+/* This structure describes one SPI transaction. The descriptor should not be modified until the transaction finishes. */
 struct spi_transaction_t {
     uint32_t flags;                 ///< Bitwise OR of SPI_TRANS_* flags
     uint16_t cmd;                   /**< Command data, of which the length is set in the ``command_bits`` of spi_device_interface_config_t.
@@ -264,15 +270,6 @@ struct spi_transaction_t {
         uint8_t rx_data[4];         ///< If SPI_USE_RXDATA is set, data is received directly to this variable
     };
 } ;        //the rx data should start from a 32-bit aligned address to get around dma issue.
-
-#define SPI_TRANS_MODE_DIO            (1<<0)  ///< Transmit/receive data in 2-bit mode
-#define SPI_TRANS_MODE_QIO            (1<<1)  ///< Transmit/receive data in 4-bit mode
-#define SPI_TRANS_USE_RXDATA          (1<<2)  ///< Receive into rx_data member of spi_transaction_t instead into memory at rx_buffer.
-#define SPI_TRANS_USE_TXDATA          (1<<3)  ///< Transmit tx_data member of spi_transaction_t instead of data at tx_buffer. Do not set tx_buffer when using this.
-#define SPI_TRANS_MODE_DIOQIO_ADDR    (1<<4)  ///< Also transmit address in mode selected by SPI_MODE_DIO/SPI_MODE_QIO
-#define SPI_TRANS_VARIABLE_CMD        (1<<5)  ///< Use the ``command_bits`` in ``spi_transaction_ext_t`` rather than default value in ``spi_device_interface_config_t``.
-#define SPI_TRANS_VARIABLE_ADDR       (1<<6)  ///< Use the ``address_bits`` in ``spi_transaction_ext_t`` rather than default value in ``spi_device_interface_config_t``.
-
 #endif // IGNORE_THIS
 //******************************************************************************
 

@@ -56,8 +56,8 @@ esp_err_t AppMQTT::eventHandler(esp_mqtt_event_handle_t event) {
             break;
         case MQTT_EVENT_DATA:
             ESP_LOGV(LOG_TAG, "MQTT_EVENT_DATA");
-            ESP_LOGV(LOG_TAG, "TOPIC=%s", event->topic);
-            ESP_LOGV(LOG_TAG, "DATA=%s", event->data);
+            //ESP_LOGV(LOG_TAG, "LEN=%d, TOPIC=%s", event->topic_len, event->topic);
+            //ESP_LOGV(LOG_TAG, "LEN=%d, DATA=%s", event->data_len, event->data);
             err_code = dataReceived(event);
             break;
         case MQTT_EVENT_ERROR:
@@ -72,6 +72,12 @@ esp_err_t AppMQTT::eventHandler(esp_mqtt_event_handle_t event) {
 
 esp_err_t AppMQTT::connected(esp_mqtt_event_handle_t event) {
     esp_err_t err_code = ESP_OK;
+
+    // FOR TESTING PURPOSES ONLY!
+    //esp_err_t esp_mqtt_client_subscribe(esp_mqtt_client_handle_t client, const char *topic, int qos);
+    err_code = esp_mqtt_client_subscribe(event->client, "irrigation/zone/on", 0);
+    ESP_LOGI(LOG_TAG, "TEST Subcribed to: irrigation/zone/on");
+
     return err_code;
 }
 
@@ -102,13 +108,13 @@ esp_err_t AppMQTT::published(esp_mqtt_event_handle_t event) {
 
 esp_err_t AppMQTT::dataReceived(esp_mqtt_event_handle_t event) {
     esp_err_t err_code = ESP_OK;
-    AppMQTTQueueNode *node = new AppMQTTQueueNode(event->topic, event->data);
+    AppMQTTQueueNode *node = new AppMQTTQueueNode(event->topic, event->topic_len, event->data, event->data_len);
 
     //TODO: perhaps move the following block of code to "app_queues.cpp".
     //portMAX_DELAY
     // 10 milllisecond delay.
     const TickType_t delay = 10 / portTICK_PERIOD_MS;
-    BaseType_t result = xQueueSendToBack(mqttReceivedQueue, node, delay);
+    BaseType_t result = xQueueSendToBack(mqttReceivedQueue, &node, delay);
     if (result == pdFALSE) {
         // The queue was full and timed out.
         delete node;
@@ -120,6 +126,8 @@ esp_err_t AppMQTT::dataReceived(esp_mqtt_event_handle_t event) {
             event->data
         );
         return ESP_ERR_TIMEOUT;
+    } else {
+        ESP_LOGV(LOG_TAG, "dataReceived(...) - message queued.");
     }
 
     return err_code;
