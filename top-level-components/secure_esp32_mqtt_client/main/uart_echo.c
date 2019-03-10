@@ -5,6 +5,14 @@
    Unless required by applicable law or agreed to in writing, this
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
+
+   ---------
+   To Test:
+   ---------
+   screen /dev/ttyUSB0 115200
+   clean   ctrl-A C
+   quit -- ctrl-A k
+        or ctrl-A \
 */
 #include <stdio.h>
 #include <string.h>

@@ -47,8 +47,8 @@ static void releaseSpiTrans(spi_transaction_t *spiTrans);
 
 AppSPI::AppSPI()
     : buscfg {
-        PIN_NUM_MISO, //miso_io_num
         PIN_NUM_MOSI, //mosi_io_num
+        PIN_NUM_MISO, //miso_io_num
         PIN_NUM_CLK,  //sclk_io_num
         -1,  //quadwp_io_num
         -1,  //quadhd_io_num
@@ -64,16 +64,74 @@ AppSPI::AppSPI()
         128, //duty_cycle_pos - (128 = 50%/50% duty)
         0, //cs_ena_pretrans
         0, //cs_ena_posttrans
-        1*1000*1000, //clock_speed_hz - Clock out at 1 MHz. //TODO: try 4mhz and 8mhz
+        APB_CLK_FREQ/80, // 1*1000*1000, //clock_speed_hz - Clock out at 1 MHz. //TODO: try 4mhz and 8mhz
         0, //input_delay_ns - Leave at 0 unless you know you need a delay.
         PIN_NUM_CS, //spics_io_num - CS pin.
         0, //flags - Bitwise OR of SPI_DEVICE_* flags
-        2, //queue_size - Able to queue this many transactions at a time.
+        1, //2, //queue_size - Able to queue this many transactions at a time.
         nullptr, //pre_cb
         nullptr, //post_cb
     }
 {
 }
+
+#ifdef IGNORE_THIS //never defined!
+// This is a configuration structure for a SPI bus.
+typedef struct {
+    int mosi_io_num;                ///< GPIO pin for Master Out Slave In (=spi_d) signal, or -1 if not used.
+    int miso_io_num;                ///< GPIO pin for Master In Slave Out (=spi_q) signal, or -1 if not used.
+    int sclk_io_num;                ///< GPIO pin for Spi CLocK signal, or -1 if not used.
+    int quadwp_io_num;              ///< GPIO pin for WP (Write Protect) signal which is used as D2 in 4-bit communication modes, or -1 if not used.
+    int quadhd_io_num;              ///< GPIO pin for HD (HolD) signal which is used as D3 in 4-bit communication modes, or -1 if not used.
+    int max_transfer_sz;            ///< Maximum transfer size, in bytes. Defaults to 4094 if 0.
+    uint32_t flags;                 ///< Abilities of bus to be checked by the driver. Or-ed value of ``SPICOMMON_BUSFLAG_*`` flags.
+    int intr_flags;    /**< Interrupt flag for the bus to set the priority, and IRAM attribute, see
+                         *  ``esp_intr_alloc.h``. Note that the EDGE, INTRDISABLED attribute are ignored
+                         *  by the driver. Note that if ESP_INTR_FLAG_IRAM is set, ALL the callbacks of
+                         *  the driver, and their callee functions, should be put in the IRAM.
+                         */
+} spi_bus_config_t;
+
+// This is a configuration for a SPI slave device that is connected to one of the SPI buses.
+typedef struct {
+    uint8_t command_bits;           ///< Default amount of bits in command phase (0-16), used when ``SPI_TRANS_VARIABLE_CMD`` is not used, otherwise ignored.
+    uint8_t address_bits;           ///< Default amount of bits in address phase (0-64), used when ``SPI_TRANS_VARIABLE_ADDR`` is not used, otherwise ignored.
+    uint8_t dummy_bits;             ///< Amount of dummy bits to insert between address and data phase
+    uint8_t mode;                   ///< SPI mode (0-3)
+    uint8_t duty_cycle_pos;         ///< Duty cycle of positive clock, in 1/256th increments (128 = 50%/50% duty). Setting this to 0 (=not setting it) is equivalent to setting this to 128.
+    uint8_t cs_ena_pretrans;        ///< Amount of SPI bit-cycles the cs should be activated before the transmission (0-16). This only works on half-duplex transactions.
+    uint8_t cs_ena_posttrans;       ///< Amount of SPI bit-cycles the cs should stay active after the transmission (0-16)
+    int clock_speed_hz;             ///< Clock speed, divisors of 80MHz, in Hz. See ``SPI_MASTER_FREQ_*``.
+    int input_delay_ns;             /**< Maximum data valid time of slave. The time required between SCLK and MISO
+        valid, including the possible clock delay from slave to master. The driver uses this value to give an extra
+        delay before the MISO is ready on the line. Leave at 0 unless you know you need a delay. For better timing
+        performance at high frequency (over 8MHz), it's suggest to have the right value.
+        */
+    int spics_io_num;               ///< CS GPIO pin for this device, or -1 if not used
+    uint32_t flags;                 ///< Bitwise OR of SPI_DEVICE_* flags
+    int queue_size;                 ///< Transaction queue size. This sets how many transactions can be 'in the air' (queued using spi_device_queue_trans but not yet finished using spi_device_get_trans_result) at the same time
+    transaction_cb_t pre_cb;   /**< Callback to be called before a transmission is started.
+                                 *
+                                 *  This callback is called within interrupt
+                                 *  context should be in IRAM for best
+                                 *  performance, see "Transferring Speed"
+                                 *  section in the SPI Master documentation for
+                                 *  full details. If not, the callback may crash
+                                 *  during flash operation when the driver is
+                                 *  initialized with ESP_INTR_FLAG_IRAM.
+                                 */
+    transaction_cb_t post_cb;  /**< Callback to be called after a transmission has completed.
+                                 *
+                                 *  This callback is called within interrupt
+                                 *  context should be in IRAM for best
+                                 *  performance, see "Transferring Speed"
+                                 *  section in the SPI Master documentation for
+                                 *  full details. If not, the callback may crash
+                                 *  during flash operation when the driver is
+                                 *  initialized with ESP_INTR_FLAG_IRAM.
+                                 */
+} spi_device_interface_config_t;
+#endif // IGNORE_THIS
 
 
 void AppSPI::connect() {
@@ -81,10 +139,12 @@ void AppSPI::connect() {
 
     //Initialize the SPI bus.
     ret = spi_bus_initialize(VSPI_HOST, &buscfg, 1);
+    //esp_err_t spi_bus_initialize(spi_host_device_t host, const spi_bus_config_t *bus_config, int dma_chan);
     ESP_ERROR_CHECK(ret);
 
     //Attach to the SPI bus.
     ret = spi_bus_add_device(VSPI_HOST, &devcfg, &spiHandle);
+    //esp_err_t spi_bus_add_device(spi_host_device_t host, const spi_device_interface_config_t *dev_config, spi_device_handle_t *handle);
     ESP_ERROR_CHECK(ret);
 }
 
@@ -159,7 +219,11 @@ void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
     size_t offset;
 
     offset = 0;
-    ptr1 = static_cast<char *>(heap_caps_malloc(messageLength, MALLOC_CAP_DMA));
+    // To optimize:
+    // * allocated in DMA-capable memory using pvPortMallocCaps(size, MALLOC_CAP_DMA);
+    // * 32-bit aligned (start from the boundary and have length of multiples of 4 bytes).
+    // Note: Deprecated - pvPortMallocCaps(size, MALLOC_CAP_DMA), instead use heap_caps_malloc(...).
+    ptr1 = static_cast<char *>(heap_caps_malloc(messageLength, MALLOC_CAP_32BIT | MALLOC_CAP_DMA));
     configASSERT(ptr1);
     memset( ptr1, 0, messageLength );
     memcpy( ptr1 + offset, node.getTopic().c_str(), node.getTopic().size() );
@@ -170,10 +234,11 @@ void AppSPI::processMqttNode(AppMQTTQueueNode &node) {
     spiTrans->tx_buffer = ptr1;
 
     offset = 0;
-    ptr1 = static_cast<char *>(heap_caps_malloc(messageLength, MALLOC_CAP_DMA));
+    ptr1 = static_cast<char *>(heap_caps_malloc(messageLength, MALLOC_CAP_32BIT | MALLOC_CAP_DMA));
     configASSERT(ptr1);
     memset(ptr1, 0, messageLength);
     spiTrans->rx_buffer = ptr1;
+
 
     esp_err_t err_code = spi_device_queue_trans(spiHandle, spiTrans, 1);
     //esp_err_t spi_device_queue_trans(spi_device_handle_t handle, spi_transaction_t *trans_desc, TickType_t ticks_to_wait)
