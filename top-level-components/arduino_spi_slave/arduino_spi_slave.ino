@@ -3,18 +3,26 @@
 #include "rotating_buffer.h"
 
 static const int TX_REQUEST_PIN = 14;
-static const unsigned RX_BUFFER_SIZE = 128;
+static const unsigned TX_BUFFER_SIZE = 128; // MUST be less than 255!!!
+static const unsigned RX_BUFFER_SIZE = 128; // MUST be less than 255!!!
 static const int DEBUG_LED = 17;
 
 unsigned long lastPing = 0;
 int spiRxStatus = 0;
+bool waitingForFirstSpiRx = true;
 bool ledState = 0;
 String strBuffer;
 
 // Needs to be interrupt safe.
+typedef buffer_type(char, TX_BUFFER_SIZE) TxBufferType;
+static TxBufferType txBuffer;
+
+// Needs to be interrupt safe.
 typedef buffer_type(char, RX_BUFFER_SIZE) RxBufferType;
 static RxBufferType rxBuffer;
+
 static volatile unsigned rxBufferOverrunCount = 0;
+
 
 void setup (void) {
   Serial.begin(115200/2);   // divide by 2 because we are running a 5v 16mhz Arduino Pro Mini at 3.3v 8mhz
@@ -24,6 +32,7 @@ void setup (void) {
   lastPing = millis();
   pinMode(DEBUG_LED, OUTPUT);
 
+  buffer_init(txBuffer, TX_BUFFER_SIZE);
   buffer_init(rxBuffer, RX_BUFFER_SIZE);
 
   pinMode(TX_REQUEST_PIN, OUTPUT);
@@ -64,7 +73,7 @@ void setup (void) {
 
   SPCR = (SPCR & 0b11) | _BV(SPE) | _BV(SPIE);
   Serial.print("SPCR:0x");
-  Serial.print(String(SPCR, BIN));
+  Serial.println(String(SPCR, BIN));
 }
 
 
@@ -83,11 +92,18 @@ ISR (SPI_STC_vect) {
   }
 
   // Transmit back to the SPI Master.
-  SPDR = 0;
+  if (is_buffer_empty(txBuffer)) {
+    SPDR = 0;
+  } else {
+    buffer_read(txBuffer, SPDR);
+    if (is_buffer_empty(txBuffer)) {
+      digitalWrite(TX_REQUEST_PIN, LOW);
+    }
+  }
 }
 
 
-void ping(void) {
+static void ping(void) {
   unsigned long thisPing = millis();
   
   if (thisPing >= lastPing + 4*1000) {
@@ -105,6 +121,17 @@ void ping(void) {
     //Serial.print("ping - buffer=");
     //Serial.println(dataSize);
   }
+}
+
+
+static void subscribe(void) {
+  char *msg = "Hello SPI.";
+  for (int ndx = 0; ndx < strlen(msg)+1; ++ndx) {
+    buffer_safe_write(txBuffer, msg[ndx]);
+  }
+  digitalWrite(TX_REQUEST_PIN, HIGH);
+  Serial.print("SPI subscribe: ");
+  Serial.println(msg);
 }
 
 
@@ -138,6 +165,11 @@ void loop (void) {
         Serial.println(strBuffer);
         strBuffer = "";
       }
+    }
+
+    if (waitingForFirstSpiRx) {
+      waitingForFirstSpiRx = false;
+      subscribe();
     }
   }
 }

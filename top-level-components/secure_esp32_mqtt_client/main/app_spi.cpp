@@ -284,19 +284,6 @@ void AppSPI::processCompletedSpiTransactions() {
         releaseSpiTrans(spiTrans);
         --spiTransactionsPendingCount;
     }
-
-    /***
-    if (err_code == ESP_OK && spiTrans) {
-        if (spiTrans->tx_buffer && !(spiTrans->flags & SPI_TRANS_USE_TXDATA)) {
-            heap_caps_free( (void *)spiTrans->tx_buffer );
-        }
-        if (spiTrans->rx_buffer && !(spiTrans->flags & SPI_TRANS_USE_RXDATA)) {
-            heap_caps_free(spiTrans->rx_buffer);
-        }
-        free(spiTrans);
-        --spiTransactionsPendingCount;
-    }
-    ***/
 }
 
 

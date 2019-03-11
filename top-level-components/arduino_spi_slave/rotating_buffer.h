@@ -161,12 +161,6 @@ struct {                        \
     if( buf.NextReadNdx >= buffer_size(buf) )   \
         buf.NextReadNdx = 0;                    \
 }
-// THE OLD WAY... 2010-06-14 (w.t.)
-//#define _buffer_next_read(buf) {
-//    buf.ReadNdx++;
-//    if( buf.ReadNdx >= buffer_size(buf) )
-//        buf.ReadNdx = 0;
-//}
 //-------------------------------------------------------------------------
 
 
