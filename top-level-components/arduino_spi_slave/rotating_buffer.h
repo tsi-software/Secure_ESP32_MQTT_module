@@ -150,16 +150,18 @@ struct {                        \
 #define _buffer_next_write(buf) {               \
     buf.WriteNdx = buf.NextWriteNdx;            \
     buf.NextWriteNdx++;                         \
-    if( buf.NextWriteNdx >= buffer_size(buf) )  \
+    if( buf.NextWriteNdx >= buffer_size(buf) ){ \
         buf.NextWriteNdx = 0;                   \
+    }                                           \
 }
 
 // TODO: this needs to be made multi-thread / interrupt safe.
 #define _buffer_next_read(buf) {                \
     buf.ReadNdx = buf.NextReadNdx;              \
     buf.NextReadNdx++;                          \
-    if( buf.NextReadNdx >= buffer_size(buf) )   \
+    if( buf.NextReadNdx >= buffer_size(buf) ) { \
         buf.NextReadNdx = 0;                    \
+    }                                           \
 }
 //-------------------------------------------------------------------------
 

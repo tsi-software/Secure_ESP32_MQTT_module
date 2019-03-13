@@ -14,6 +14,7 @@
 
 //-------------------
 #ifdef __cplusplus
+#include <sstream>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/spi_master.h"
@@ -36,11 +37,15 @@ private:
     spi_device_interface_config_t devcfg;
     TaskHandle_t taskHandle = nullptr;
     unsigned spiTransactionsPendingCount = 0;
+    std::stringstream rxStream;
 
     void task();
     void taskFirstTime();
     void processMqttNode(AppMQTTQueueNode &node);
     void processCompletedSpiTransactions();
+    void processReceivedData(const char *rxBuffer, size_t rxLength);
+    void processReceivedString(const std::string &strBuffer);
+
 };
 
 #endif //__cplusplus

@@ -15,11 +15,11 @@ String strBuffer;
 
 // Needs to be interrupt safe.
 typedef buffer_type(char, TX_BUFFER_SIZE) TxBufferType;
-static TxBufferType txBuffer;
+volatile static TxBufferType txBuffer;
 
 // Needs to be interrupt safe.
 typedef buffer_type(char, RX_BUFFER_SIZE) RxBufferType;
-static RxBufferType rxBuffer;
+volatile static RxBufferType rxBuffer;
 
 static volatile unsigned rxBufferOverrunCount = 0;
 
@@ -125,8 +125,8 @@ static void ping(void) {
 
 
 static void subscribe(void) {
-  char *msg = "Hello SPI.";
-  for (int ndx = 0; ndx < strlen(msg)+1; ++ndx) {
+  const char *msg = "Hello SPI.";
+  for (int ndx = 0; ndx <= strlen(msg); ++ndx) { // Include null terminator.
     buffer_safe_write(txBuffer, msg[ndx]);
   }
   digitalWrite(TX_REQUEST_PIN, HIGH);

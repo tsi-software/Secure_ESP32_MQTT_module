@@ -9,8 +9,6 @@
     CONDITIONS OF ANY KIND, either express or implied.
 */
 
-//#include <stdio.h>
-//#include <stdlib.h>
 #include <string.h>
 #include "esp_system.h"
 #include "esp_log.h"
@@ -281,9 +279,36 @@ void AppSPI::processCompletedSpiTransactions() {
     // ESP_ERR_TIMEOUT if there was no completed transaction before ticks_to_wait expired
     // ESP_OK on success
     if (err_code == ESP_OK && spiTrans) {
+        processReceivedData(static_cast<char *>(spiTrans->rx_buffer), spiTrans->rxlength);
         releaseSpiTrans(spiTrans);
         --spiTransactionsPendingCount;
     }
+}
+
+
+void AppSPI::processReceivedData(const char *rxBuffer, size_t rxLength) {
+    for (int ndx = 0; ndx < rxLength; ++ndx) {
+        char rxChar = rxBuffer[ndx];
+        if (rxChar) {
+            // Append the give 'char' to rxStream.
+            ESP_LOGI(LOG_TAG, "AppSPI::processReceivedData(...): put(%c)", rxChar);
+            rxStream.put(rxChar);
+        } else {
+            // rxChar is '\0' - process rxStream and then clear it before starting over.
+            ESP_LOGI(LOG_TAG, "AppSPI::processReceivedData(...): received Null.");
+            std::string strBuffer{ rxStream.str() };
+            if (!strBuffer.empty()) {
+                processReceivedString(strBuffer);
+            }
+            rxStream.str(std::string());
+            rxStream.clear();
+        }
+    }
+}
+
+
+void AppSPI::processReceivedString(const std::string &strBuffer) {
+    ESP_LOGI(LOG_TAG, "AppSPI::processReceivedString(...):\n%s", strBuffer.c_str());
 }
 
 
