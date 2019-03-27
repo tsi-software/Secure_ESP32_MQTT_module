@@ -27,7 +27,7 @@ static volatile unsigned rxBufferOverrunCount = 0;
 void setup (void) {
   Serial.begin(115200/2);   // divide by 2 because we are running a 5v 16mhz Arduino Pro Mini at 3.3v 8mhz
   //Serial.begin(115200);   // debugging
-  Serial.println("Starting Arduino SPI Slave.");
+  Serial.println("Starting Arduino SPI Master.");
 
   lastPing = millis();
   pinMode(DEBUG_LED, OUTPUT);
