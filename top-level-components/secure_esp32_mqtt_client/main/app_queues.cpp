@@ -43,9 +43,23 @@ QueueHandle_t spiReceivedQueue;
 
 
 //-------------------------------------
+// SPI Transmit Queue.
+//-------------------------------------
+#define SPI_TX_QUEUE_LENGTH 4
+#define SPI_TX_ITEM_SIZE sizeof( AppSPIQueueNode * )
+#if (configSUPPORT_STATIC_ALLOCATION == 1)
+static uint8_t spiTxQueueStorage[ SPI_TX_QUEUE_LENGTH * SPI_TX_ITEM_SIZE ];
+static StaticQueue_t spiTxQueueBuffer;
+#endif // configSUPPORT_STATIC_ALLOCATION
+QueueHandle_t spiTransmitQueue;
+
+
+//-------------------------------------
 // app_queues_init()
 //-------------------------------------
 void app_queues_init(void) {
+    //----------------------
+    // MQTT Received Queue.
 #if (configSUPPORT_STATIC_ALLOCATION == 1)
     mqttReceivedQueue = xQueueCreateStatic(
         MQTT_RX_QUEUE_LENGTH,
@@ -62,6 +76,8 @@ void app_queues_init(void) {
     configASSERT(mqttReceivedQueue);
     ESP_LOGI(LOG_TAG, "mqttReceivedQueue initialized.");
 
+    //----------------------
+    // SPI Received Queue.
 #if (configSUPPORT_STATIC_ALLOCATION == 1)
     spiReceivedQueue = xQueueCreateStatic(
         SPI_RX_QUEUE_LENGTH,
@@ -77,4 +93,22 @@ void app_queues_init(void) {
 #endif
     configASSERT(spiReceivedQueue);
     ESP_LOGI(LOG_TAG, "spiReceivedQueue initialized.");
+
+    //----------------------
+    // SPI Transmit Queue.
+#if (configSUPPORT_STATIC_ALLOCATION == 1)
+    spiTransmitQueue = xQueueCreateStatic(
+        SPI_TX_QUEUE_LENGTH,
+        SPI_TX_ITEM_SIZE,
+        spiTxQueueStorage,
+        &spiTxQueueBuffer
+    );
+#else
+    spiTransmitQueue = xQueueCreate(
+        SPI_TX_QUEUE_LENGTH,
+        SPI_TX_ITEM_SIZE
+    );
+#endif
+    configASSERT(spiTransmitQueue);
+    ESP_LOGI(LOG_TAG, "spiTransmitQueue initialized.");
 }

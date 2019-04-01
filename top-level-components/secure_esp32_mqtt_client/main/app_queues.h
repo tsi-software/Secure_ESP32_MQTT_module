@@ -56,6 +56,7 @@ extern "C"
 
 extern QueueHandle_t mqttReceivedQueue;
 extern QueueHandle_t spiReceivedQueue;
+extern QueueHandle_t spiTransmitQueue;
 
 // c wrapper.
 extern void app_queues_init(void);
