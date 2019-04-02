@@ -15,8 +15,11 @@
 //-------------------
 #ifdef __cplusplus
 #include <sstream>
+#include "esp_system.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "soc/gpio_struct.h"
 #include "driver/gpio.h"
 #include "driver/spi_slave.h"
 
@@ -29,9 +32,9 @@ public:
     const unsigned transactionLength;
 
     // transactionLength MUST be divisible by 4!!!
-    SPISlaveTransactionPool(const unsigned poolSize, const unsigned transactionLength) 
-        : poolSize { poolSize }
-        , transactionLength { transactionLength }
+    SPISlaveTransactionPool(unsigned poolSize, unsigned transactionLength) 
+        : poolSize(poolSize)
+        , transactionLength(transactionLength)
     {
         // TODO: assert that transactionLength is divisible by 4!
 
@@ -50,15 +53,15 @@ public:
             spiSlaveTrans->rx_buffer = heap_caps_malloc(transactionLength, MALLOC_CAP_32BIT | MALLOC_CAP_DMA);
             configASSERT(spiSlaveTrans->rx_buffer);
 
-            poolItem[poolIndex].spiSlaveTransaction = spiSlaveTrans;
-            poolItem[poolIndex].isInUse = false;
+            poolItems[poolIndex].spiSlaveTransaction = spiSlaveTrans;
+            poolItems[poolIndex].isInUse = false;
         }
     }
 
     virtual ~SPISlaveTransactionPool() {
         for (unsigned poolIndex = 0; poolIndex < poolSize; ++poolIndex) {
-            spi_slave_transaction_t *spiSlaveTrans = poolItem[poolIndex].spiSlaveTransaction;
-            free(spiSlaveTrans->tx_buffer);
+            spi_slave_transaction_t *spiSlaveTrans = poolItems[poolIndex].spiSlaveTransaction;
+            free((void*)spiSlaveTrans->tx_buffer);
             free(spiSlaveTrans->rx_buffer);
             free(spiSlaveTrans);
         }
@@ -69,10 +72,10 @@ public:
     // NOT TREAD SAFE!!!
     spi_slave_transaction_t * getFromPool() {
         for (unsigned poolIndex = 0; poolIndex < poolSize; ++poolIndex) {
-            spi_slave_transaction_t *spiSlaveTrans = poolItem[poolIndex].spiSlaveTransaction;
-            if (!spiSlaveTrans->isInUse) {
-                spiSlaveTrans->isInUse = true;
-                return spiSlaveTrans;
+            PoolItem &poolitem = poolItems[poolIndex];
+            if (!poolitem.isInUse) {
+                poolitem.isInUse = true;
+                return poolitem.spiSlaveTransaction;
             }
         }
         // TODO: FAIL! Pool is empty!
@@ -87,9 +90,8 @@ public:
         }
 
         for (unsigned poolIndex = 0; poolIndex < poolSize; ++poolIndex) {
-            spi_slave_transaction_t *spiSlaveTrans = poolItem[poolIndex].spiSlaveTransaction;
-            if (spiSlaveTransaction == spiSlaveTrans) {
-                spiSlaveTrans->isInUse = false;
+            if (spiSlaveTransaction == poolItems[poolIndex].spiSlaveTransaction) {
+                poolItems[poolIndex].isInUse = false;
                 return;
             }
         }
@@ -102,7 +104,7 @@ private:
         bool isInUse;
     };
     struct PoolItem *poolItems;
-}
+};
 
 
 //------------------------------------------------------------------------------
@@ -120,9 +122,10 @@ public:
     }
 
 private:
-    spi_device_handle_t           spiHandle;
-    spi_bus_config_t              busConfig;
-    spi_slave_interface_config_t  slaveConfig;
+    //TODO: see 'void AppSPI::connect()'
+    //      implement busConfig and slaveConfig here if AppSPI::connect() is failing.
+    //spi_bus_config_t              busConfig;
+    //spi_slave_interface_config_t  slaveConfig;
     TaskHandle_t taskHandle = nullptr;
     SPISlaveTransactionPool transactionPool;
     std::stringstream rxStream;
@@ -133,12 +136,8 @@ private:
     void processIncomingMqttMessages();
     void processMqttNode(const AppMQTTQueueNode &node);
     void queueString(const std::string &str);
-    void processCompletedTxTransactions();
+    void processCompletedSpiTransaction();
     inline void atomicIncrementTxPendingCount(int incrementValue);
-
-    //void processCompletedSpiTransactions();
-    //void processReceivedData(const char *rxBuffer, size_t rxLength);
-    //void processReceivedString(const std::string &strBuffer);
 };
 
 #endif //__cplusplus

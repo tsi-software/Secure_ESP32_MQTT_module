@@ -14,9 +14,9 @@
 //#include <string.h>
 #include "esp_system.h"
 #include "esp_log.h"
-#include "driver/spi_master.h"
 #include "soc/gpio_struct.h"
 #include "driver/gpio.h"
+#include "driver/spi_slave.h"
 
 #include "app_queues.h"
 #include "app_spi.h"
@@ -26,11 +26,14 @@ static const char *LOG_TAG = "APP_SPI";
 
 // https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/peripherals/spi_master.html
 // VSPI
-static const int PIN_NUM_MISO = 19;
-static const int PIN_NUM_MOSI = 23;
-static const int PIN_NUM_CLK  = 18;
-static const int PIN_NUM_CS   = 32; // ** GPIO5 is STRAPPING **
-static const int PIN_NUM_HANDSHAKE = 33; // OUTPUT - Set to HIGH when requesting to send to the Master.
+
+static const gpio_num_t PIN_NUM_MISO = GPIO_NUM_19;
+static const gpio_num_t PIN_NUM_MOSI = GPIO_NUM_23;
+static const gpio_num_t PIN_NUM_CLK  = GPIO_NUM_18;
+static const gpio_num_t PIN_NUM_CS   = GPIO_NUM_32; // ** GPIO5 is STRAPPING **
+
+static const gpio_num_t PIN_NUM_HANDSHAKE = GPIO_NUM_33; // OUTPUT - Set to HIGH when requesting to send to the Master.
+#define GPIO_SEL_HANDSHAKE_PIN GPIO_SEL_33
 
 static const char       *APP_SPI_TASK_NAME = "App SPI";
 static const uint32_t    APP_SPI_STACK_DEPTH = 4000;
@@ -42,7 +45,7 @@ static AppSPI static_app_spi;
 //-------------------------------------
 // Local Declarations.
 //-------------------------------------
-static void releaseSpiTrans(spi_transaction_t *spiTrans);
+//static void releaseSpiTrans(spi_transaction_t *spiTrans);
 
 
 //-------------------------------------
@@ -59,6 +62,7 @@ static void slave_transaction_post_trans_callback(spi_slave_transaction_t *trans
 }
 
 
+/***
 // transactionLength MUST be divisible by 4!!!
 AppSPI::AppSPI(const unsigned queueSize, const unsigned transactionLength)
     : transactionPool { queueSize, transactionLength }
@@ -75,12 +79,46 @@ AppSPI::AppSPI(const unsigned queueSize, const unsigned transactionLength)
     , slaveConfig {
         PIN_NUM_CS, //spics_io_num
         0, //flags -- Bitwise OR of SPI_SLAVE_* flags
-        queueSize, //queue_size
+        static_cast<int>(queueSize), //queue_size
         0, //mode -- SPI mode (0-3)
         slave_transaction_post_setup_callback, //slave_transaction_cb_t post_setup_cb
         slave_transaction_post_trans_callback  //slave_transaction_cb_t post_trans_cb
     }
 {
+}
+***/
+
+    /***
+    AppSPI(unsigned queueSize = 4, unsigned transactionLength = 32)
+        : transactionPool ( queueSize, transactionLength )
+        , busConfig {
+            static_cast<int>(PIN_NUM_MOSI), //mosi_io_num
+            static_cast<int>(PIN_NUM_MISO), //miso_io_num
+            static_cast<int>(PIN_NUM_CLK),  //sclk_io_num
+            -1,  //quadwp_io_num
+            -1,  //quadhd_io_num
+            0,   //max_transfer_sz, Defaults to 4094 if 0.
+            static_cast<uint32_t>(SPICOMMON_BUSFLAG_SLAVE), //flags
+            0    //intr_flags - Interrupt flag for the bus to set the priority, and IRAM attribute
+        }
+        , slaveConfig {
+            static_cast<int>(PIN_NUM_CS), //spics_io_num
+            0, //flags -- Bitwise OR of SPI_SLAVE_* flags
+            static_cast<int>(queueSize), //queue_size
+            0, //mode -- SPI mode (0-3)
+            slave_transaction_post_setup_callback, //slave_transaction_cb_t post_setup_cb
+            slave_transaction_post_trans_callback  //slave_transaction_cb_t post_trans_cb
+        }
+    {
+    }
+    ***/
+
+
+
+AppSPI::AppSPI(const unsigned queueSize, const unsigned transactionLength)
+              : transactionPool(queueSize, transactionLength)
+{
+
 }
 
 
@@ -145,7 +183,7 @@ void AppSPI::connect() {
 
     //Configure handshake line as output
     gpio_config_t gpioConfig {
-        (1<<PIN_NUM_HANDSHAKE), //uint64_t pin_bit_mask
+        GPIO_SEL_HANDSHAKE_PIN, //uint64_t pin_bit_mask
         GPIO_MODE_OUTPUT,       //gpio_mode_t mode
         GPIO_PULLUP_DISABLE,    //gpio_pullup_t pull_up_en
         GPIO_PULLDOWN_DISABLE,  //gpio_pulldown_t pull_down_en
@@ -157,6 +195,26 @@ void AppSPI::connect() {
     gpio_set_pull_mode(PIN_NUM_MOSI, GPIO_PULLUP_ONLY);
     gpio_set_pull_mode(PIN_NUM_CLK,  GPIO_PULLUP_ONLY);
     gpio_set_pull_mode(PIN_NUM_CS,   GPIO_PULLUP_ONLY);
+
+    spi_bus_config_t busConfig = {
+        PIN_NUM_MOSI, //mosi_io_num
+        PIN_NUM_MISO, //miso_io_num
+        PIN_NUM_CLK,  //sclk_io_num
+        -1,  //quadwp_io_num
+        -1,  //quadhd_io_num
+        0,   //max_transfer_sz, Defaults to 4094 if 0.
+        SPICOMMON_BUSFLAG_SLAVE , //flags
+        0    //intr_flags - Interrupt flag for the bus to set the priority, and IRAM attribute
+    };
+
+    spi_slave_interface_config_t slaveConfig = {
+        PIN_NUM_CS, //spics_io_num
+        0, //flags -- Bitwise OR of SPI_SLAVE_* flags
+        static_cast<int>(transactionPool.poolSize), //queue_size
+        0, //mode -- SPI mode (0-3)
+        slave_transaction_post_setup_callback, //slave_transaction_cb_t post_setup_cb
+        slave_transaction_post_trans_callback  //slave_transaction_cb_t post_trans_cb
+    };
 
     //Initialize SPI slave interface
     ret = spi_slave_initialize(VSPI_HOST, &busConfig, &slaveConfig, 1);
@@ -184,7 +242,7 @@ void AppSPI::task() {
 
         processIncomingMqttMessages();
 
-        processCompletedTxTransactions();
+        processCompletedSpiTransaction();
     }//while(1)
 
     // This should never be reached, but just incase...
@@ -239,7 +297,7 @@ void AppSPI::processMqttNode(const AppMQTTQueueNode &node) {
 }
 
 
-void queueString(const std::string &str) {
+void AppSPI::queueString(const std::string &str) {
     esp_err_t err_code;
     spi_slave_transaction_t *slaveTrans;
     TickType_t ticks_to_wait = 1;
@@ -256,7 +314,7 @@ void queueString(const std::string &str) {
 
         slaveTrans->length = transactionPool.transactionLength;
         slaveTrans->trans_len = transactionPool.transactionLength;
-        std::memset(slaveTrans->tx_buffer, 0, transactionPool.transactionLength);
+        std::memset((void*)slaveTrans->tx_buffer, 0, transactionPool.transactionLength);
         std::memset(slaveTrans->rx_buffer, 0, transactionPool.transactionLength);
         slaveTrans->user = (void *)this;
 
@@ -264,7 +322,7 @@ void queueString(const std::string &str) {
         if (copyNum > transactionPool.transactionLength) {
             copyNum = transactionPool.transactionLength;
         }
-        std::memcpy(slaveTrans->tx_buffer, (sendPtr + sendIndex), copyNum);
+        std::memcpy((void*)slaveTrans->tx_buffer, (sendPtr + sendIndex), copyNum);
 
         err_code = spi_slave_queue_trans(VSPI_HOST, slaveTrans, ticks_to_wait);
         if (err_code == ESP_OK) {
@@ -277,7 +335,7 @@ void queueString(const std::string &str) {
 }
 
 
-void AppSPI::processCompletedTxTransactions() {
+void AppSPI::processCompletedSpiTransaction() {
     spi_slave_transaction_t *slaveTrans = nullptr;
     TickType_t ticks_to_wait = 1;
     esp_err_t err_code = spi_slave_get_trans_result(VSPI_HOST, &slaveTrans, ticks_to_wait);
@@ -286,6 +344,10 @@ void AppSPI::processCompletedTxTransactions() {
     //ESP_ERR_TIMEOUT if there was no completed transaction before ticks_to_wait expired
     //ESP_OK on success
     if (err_code == ESP_OK && slaveTrans) {
+
+        //TODO: process slaveTrans->rx_buffer
+        //      i.e. re-assemble and queue up MQTT commands.
+
         transactionPool.returnToPool(slaveTrans);
         atomicIncrementTxPendingCount(-1);
     }
