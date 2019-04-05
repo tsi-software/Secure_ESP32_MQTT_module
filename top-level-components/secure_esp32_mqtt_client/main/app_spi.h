@@ -19,9 +19,9 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "soc/gpio_struct.h"
-#include "driver/gpio.h"
-#include "driver/spi_slave.h"
+//#include "soc/gpio_struct.h"
+//#include "driver/gpio.h"
+//#include "driver/spi_slave.h"
 
 
 //------------------------------------------------------------------------------
@@ -128,7 +128,7 @@ private:
     //spi_slave_interface_config_t  slaveConfig;
     TaskHandle_t taskHandle = nullptr;
     SPISlaveTransactionPool transactionPool;
-    std::stringstream rxStream;
+    //std::stringstream rxStream;
     volatile int txPendingCount = 0;
 
     void task();
@@ -138,6 +138,8 @@ private:
     void queueString(const std::string &str);
     void processCompletedSpiTransaction();
     inline void atomicIncrementTxPendingCount(int incrementValue);
+    void reassembleAndQueueRxMessage(const char *rxBuffer, const size_t bufferLength);
+
 };
 
 #endif //__cplusplus

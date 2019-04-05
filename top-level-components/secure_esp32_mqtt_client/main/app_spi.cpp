@@ -14,7 +14,7 @@
 //#include <string.h>
 #include "esp_system.h"
 #include "esp_log.h"
-#include "soc/gpio_struct.h"
+//#include "soc/gpio_struct.h"
 #include "driver/gpio.h"
 #include "driver/spi_slave.h"
 
@@ -62,66 +62,14 @@ static void slave_transaction_post_trans_callback(spi_slave_transaction_t *trans
 }
 
 
-/***
-// transactionLength MUST be divisible by 4!!!
-AppSPI::AppSPI(const unsigned queueSize, const unsigned transactionLength)
-    : transactionPool { queueSize, transactionLength }
-    , busConfig {
-        PIN_NUM_MOSI, //mosi_io_num
-        PIN_NUM_MISO, //miso_io_num
-        PIN_NUM_CLK,  //sclk_io_num
-        -1,  //quadwp_io_num
-        -1,  //quadhd_io_num
-        0,   //max_transfer_sz, Defaults to 4094 if 0.
-        SPICOMMON_BUSFLAG_SLAVE , //flags
-        0    //intr_flags - Interrupt flag for the bus to set the priority, and IRAM attribute
-    }
-    , slaveConfig {
-        PIN_NUM_CS, //spics_io_num
-        0, //flags -- Bitwise OR of SPI_SLAVE_* flags
-        static_cast<int>(queueSize), //queue_size
-        0, //mode -- SPI mode (0-3)
-        slave_transaction_post_setup_callback, //slave_transaction_cb_t post_setup_cb
-        slave_transaction_post_trans_callback  //slave_transaction_cb_t post_trans_cb
-    }
-{
-}
-***/
-
-    /***
-    AppSPI(unsigned queueSize = 4, unsigned transactionLength = 32)
-        : transactionPool ( queueSize, transactionLength )
-        , busConfig {
-            static_cast<int>(PIN_NUM_MOSI), //mosi_io_num
-            static_cast<int>(PIN_NUM_MISO), //miso_io_num
-            static_cast<int>(PIN_NUM_CLK),  //sclk_io_num
-            -1,  //quadwp_io_num
-            -1,  //quadhd_io_num
-            0,   //max_transfer_sz, Defaults to 4094 if 0.
-            static_cast<uint32_t>(SPICOMMON_BUSFLAG_SLAVE), //flags
-            0    //intr_flags - Interrupt flag for the bus to set the priority, and IRAM attribute
-        }
-        , slaveConfig {
-            static_cast<int>(PIN_NUM_CS), //spics_io_num
-            0, //flags -- Bitwise OR of SPI_SLAVE_* flags
-            static_cast<int>(queueSize), //queue_size
-            0, //mode -- SPI mode (0-3)
-            slave_transaction_post_setup_callback, //slave_transaction_cb_t post_setup_cb
-            slave_transaction_post_trans_callback  //slave_transaction_cb_t post_trans_cb
-        }
-    {
-    }
-    ***/
-
-
-
 AppSPI::AppSPI(const unsigned queueSize, const unsigned transactionLength)
               : transactionPool(queueSize, transactionLength)
 {
-
 }
 
 
+
+//******************************************************************************
 #ifdef IGNORE_THIS //never defined (i.e. commented out)!
 // This is a configuration structure for a SPI bus.
 typedef struct {
@@ -176,6 +124,8 @@ typedef struct {
     gpio_int_type_t intr_type;      /*!< GPIO interrupt type                                  */
 } gpio_config_t;
 #endif // IGNORE_THIS
+//******************************************************************************
+
 
 
 void AppSPI::connect() {
@@ -216,6 +166,7 @@ void AppSPI::connect() {
         slave_transaction_post_trans_callback  //slave_transaction_cb_t post_trans_cb
     };
 
+    //TODO: define DMA Channel 1 as a constant.
     //Initialize SPI slave interface
     ret = spi_slave_initialize(VSPI_HOST, &busConfig, &slaveConfig, 1);
     ESP_ERROR_CHECK(ret);
@@ -254,6 +205,25 @@ void AppSPI::task() {
 
 
 void AppSPI::processIncomingMqttMessages() {
+    TickType_t queueReceiveDelay = 1;
+
+    // TODO: uncomment the following if/when appropriate...
+    //if (txPendingCount == 0) {
+    //    // All SPI Transactions have completed and their resources released.
+    //    // So wait for any new incoming MQTT messages to process.
+    //    queueReceiveDelay = portMAX_DELAY;
+    //}
+
+    AppMQTTQueueNode node;
+    esp_err_t err_code = node.queueReceive(mqttReceivedQueue, queueReceiveDelay);
+    if (err_code == ESP_OK) {
+        processMqttNode(node);
+    }
+}
+
+
+/****
+void AppSPI::processIncomingMqttMessages() {
     // Process messages that was received from MQTT subscriptions.
     AppMQTTQueueNode *node = nullptr;
     TickType_t queueReceiveDelay = 1;
@@ -281,6 +251,7 @@ void AppSPI::processIncomingMqttMessages() {
     delete node;
     node = nullptr;
 }
+****/
 
 
 void AppSPI::processMqttNode(const AppMQTTQueueNode &node) {
@@ -345,8 +316,9 @@ void AppSPI::processCompletedSpiTransaction() {
     //ESP_OK on success
     if (err_code == ESP_OK && slaveTrans) {
 
-        //TODO: process slaveTrans->rx_buffer
-        //      i.e. re-assemble and queue up MQTT commands.
+        //Process slaveTrans->rx_buffer
+        //i.e. re-assemble and queue up MQTT commands.
+        reassembleAndQueueRxMessage( static_cast<const char*>(slaveTrans->rx_buffer), slaveTrans->trans_len );
 
         transactionPool.returnToPool(slaveTrans);
         atomicIncrementTxPendingCount(-1);
@@ -360,6 +332,30 @@ void AppSPI::atomicIncrementTxPendingCount(int incrementValue) {
     //TODO: make this a lambda
     gpio_set_level(PIN_NUM_HANDSHAKE, txPendingCount > 0 ? 1 : 0);
     //TODO: Give Mutex.
+}
+
+
+void AppSPI::reassembleAndQueueRxMessage(const char *rxBuffer, const size_t bufferLength) {
+    if (!rxBuffer) {
+        return;
+    }
+
+
+    std::string pendingRxBuffer;
+
+
+    char ch;
+    for (size_t index = 0; index < bufferLength; ++index) {
+        ch = rxBuffer[index];
+        if (ch) {
+            pendingRxBuffer += ch;
+        } else {
+            if (pendingRxBuffer.size() > 0) {
+                //TODO: queue the contents of pendingRxBuffer.
+                pendingRxBuffer = ""; // set size to zero.
+            }
+        }
+    }
 }
 
 

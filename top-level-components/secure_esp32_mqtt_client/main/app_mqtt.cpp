@@ -107,6 +107,11 @@ esp_err_t AppMQTT::published(esp_mqtt_event_handle_t event) {
 
 
 esp_err_t AppMQTT::dataReceived(esp_mqtt_event_handle_t event) {
+    AppMQTTQueueNode node(event->topic, event->topic_len, event->data, event->data_len);
+    return node.queueSendToBack(mqttReceivedQueue);
+}
+/***
+esp_err_t AppMQTT::dataReceived(esp_mqtt_event_handle_t event) {
     esp_err_t err_code = ESP_OK;
     AppMQTTQueueNode *node = new AppMQTTQueueNode(event->topic, event->topic_len, event->data, event->data_len);
 
@@ -132,7 +137,10 @@ esp_err_t AppMQTT::dataReceived(esp_mqtt_event_handle_t event) {
 
     return err_code;
 }
+***/
 
+
+//******************************************************************************
 #ifdef IGNORE_THIS //never defined!
 typedef struct {
     esp_mqtt_event_id_t event_id;       /*!< MQTT event type */
@@ -148,6 +156,8 @@ typedef struct {
     int session_present;                /*!< MQTT session_present flag for connection event */
 } esp_mqtt_event_t;
 #endif //IGNORE_THIS
+//******************************************************************************
+
 
 
 esp_err_t AppMQTT::errorOccurred(esp_mqtt_event_handle_t event) {
