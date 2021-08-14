@@ -129,6 +129,7 @@ private:
     TaskHandle_t taskHandle = nullptr;
     SPISlaveTransactionPool transactionPool;
     //std::stringstream rxStream;
+    std::string pendingRxBuffer;
     volatile int txPendingCount = 0;
 
     void task();

@@ -11,7 +11,6 @@
 
 #include <cstring>
 #include <string>
-//#include <string.h>
 #include "esp_system.h"
 #include "esp_log.h"
 //#include "soc/gpio_struct.h"
@@ -40,12 +39,6 @@ static const uint32_t    APP_SPI_STACK_DEPTH = 4000;
 static const UBaseType_t APP_SPI_DEFAULT_TASK_PRIORITY = 5;
 
 static AppSPI static_app_spi;
-
-
-//-------------------------------------
-// Local Declarations.
-//-------------------------------------
-//static void releaseSpiTrans(spi_transaction_t *spiTrans);
 
 
 //-------------------------------------
@@ -190,9 +183,7 @@ void AppSPI::task() {
 
     while(1) {
         ESP_LOGI(LOG_TAG, "AppSPI::task() - loop.");
-
         processIncomingMqttMessages();
-
         processCompletedSpiTransaction();
     }//while(1)
 
@@ -340,28 +331,24 @@ void AppSPI::reassembleAndQueueRxMessage(const char *rxBuffer, const size_t buff
         return;
     }
 
-
-    std::string pendingRxBuffer;
-
-
     char ch;
     for (size_t index = 0; index < bufferLength; ++index) {
         ch = rxBuffer[index];
         if (ch) {
             pendingRxBuffer += ch;
         } else {
+            // When the null terminator is reached then queue the buffered string.
             if (pendingRxBuffer.size() > 0) {
-                //TODO: queue the contents of pendingRxBuffer.
-                pendingRxBuffer = ""; // set size to zero.
+                AppSPIQueueNode node(pendingRxBuffer.c_str());
+                esp_err_t err_code = node.queueSendToBack(spiReceivedQueue);
+                //if (err_code != ESP_OK) {
+                //}
+
+                pendingRxBuffer = ""; // clear the buffer but don't release its memory.
             }
         }
     }
 }
-
-
-//-------------------------------------
-// Local Functions.
-//-------------------------------------
 
 
 //******************************************************************************
